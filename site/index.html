@@ -287,7 +287,7 @@ h1.title { margin: 0; padding-bottom: 2px; font-family: var(--serif); font-weigh
     else { $("tab-practice").setAttribute("aria-current", "page"); $("tab-today").removeAttribute("aria-current"); }
     $("tagline").textContent = m === "daily"
       ? `Puzzle No. ${puzzleNo}, ${today0().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`
-      : `Practice: puzzle No. ${no} from an earlier day. It doesn't count and isn't saved.`;
+      : `Practice: puzzle No. ${no} of ${meta.count}. It doesn't count and isn't saved.`;
     $("guess").value = "";
     $("share-fallback").hidden = true;
     setMsg(null);
@@ -417,10 +417,10 @@ h1.title { margin: 0; padding-bottom: 2px; font-family: var(--serif); font-weigh
   const failed = what => setMsg("bad", `Couldn't load ${what}. Check your connection and reload the page.`);
 
   async function practice() {
-    const past = puzzleNo - 1; // practice only uses earlier days, never today's or future ones
-    if (past < 1) { setMsg("note", "Practice uses puzzles from earlier days, so it opens tomorrow."); return; }
+    // Practice can be any puzzle in the schedule except today's (and not the one just shown).
+    const today = (puzzleNo - 1) % meta.count + 1;
     let no;
-    do { no = 1 + Math.floor(Math.random() * past); } while (past > 1 && mode === "practice" && no === shownNo);
+    do { no = 1 + Math.floor(Math.random() * meta.count); } while (meta.count > 2 && (no === today || (mode === "practice" && no === shownNo)));
     try { load(await getPuzzle(no), "practice", no); } catch (e) { failed("a practice article"); return; }
     window.scrollTo({ top: 0 });
   }
