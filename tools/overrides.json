@@ -1,0 +1,30 @@
+{
+  "_comment": "Hand fixes for build_puzzles.py. _exclude: titles never used. _related: if the first word is hidden, these words are hidden too. Per title: accept = extra answers, hide = extra hidden words, show = words not to hide.",
+  "_exclude": [],
+  "_related": {
+    "sun": ["solar"],
+    "moon": ["lunar"],
+    "mars": ["martian", "martians"],
+    "venus": ["venusian"],
+    "jupiter": ["jovian"],
+    "rome": ["roman", "romans"],
+    "spain": ["spanish", "spaniards", "spaniard"],
+    "judaism": ["jewish", "jews", "jew", "judaic"],
+    "islam": ["muslim", "muslims"],
+    "poland": ["polish", "poles"],
+    "netherlands": ["dutch"],
+    "ireland": ["irish"],
+    "switzerland": ["swiss"],
+    "sweden": ["swedish", "swedes"],
+    "denmark": ["danish", "danes"],
+    "norway": ["norwegian", "norwegians"],
+    "finland": ["finnish", "finns"],
+    "scotland": ["scottish", "scots"],
+    "wales": ["welsh"],
+    "peru": ["peruvian", "peruvians"],
+    "cuba": ["cuban", "cubans"],
+    "philippines": ["filipino", "filipinos"]
+  },
+  "Mount Everest": {"hide": ["chomolangma"]},
+  "Hippocrates": {"hide": ["hippokrates"]}
+}

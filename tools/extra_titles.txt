@@ -1,0 +1,2 @@
+# Extra Wikipedia article titles to turn into puzzles, one per line.
+# Then run: python tools/fetch_wiki.py && python tools/build_puzzles.py

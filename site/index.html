@@ -1,5 +1,465 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wiki Blackout</title></head>
-<body style="font-family:sans-serif;padding:2em">Wiki Blackout is coming soon.</body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wiki Blackout</title>
+<meta name="description" content="A daily guessing game: name the blacked-out encyclopedia article in as few steps as you can.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101418" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Wiki Blackout">
+<meta property="og:description" content="Name today's blacked-out encyclopedia article in as few steps as you can.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23fff'/%3E%3Crect x='4' y='7' width='24' height='4' fill='%23202122'/%3E%3Crect x='4' y='14' width='15' height='4' fill='%23202122'/%3E%3Crect x='22' y='14' width='6' height='4' fill='%23202122'/%3E%3Crect x='4' y='21' width='19' height='4' fill='%23202122'/%3E%3C/svg%3E">
+<style>
+/* Layout: an encyclopedia article page. Sticky top bar holds the guess box; game state lives in the infobox. */
+:root {
+  --bg: #ffffff; --fg: #202122; --muted: #54595d; --subtle: #72777d;
+  --line: #a2a9b1; --line-soft: #c8ccd1; --surface: #f8f9fa; --surface-2: #eaecf0;
+  --link: #3366cc; --primary: #3366cc; --primary-hover: #447ff5; --primary-fg: #ffffff;
+  --bar: #202122; --fresh: #fce8a0;
+  --ok: #14866d; --ok-bg: #dff2eb; --bad: #d73333; --bad-bg: #ffe9e5;
+  --serif: "Linux Libertine", "Libertinus Serif", Georgia, Times, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Lato, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101418; --fg: #eaecf0; --muted: #a2a9b1; --subtle: #8b9096;
+    --line: #54595d; --line-soft: #3a3d42; --surface: #1b1e22; --surface-2: #27292d;
+    --link: #88a3e8; --primary: #88a3e8; --primary-hover: #a6bbf5; --primary-fg: #101418;
+    --bar: #c8ccd1; --fresh: #5c4a16;
+    --ok: #4bb595; --ok-bg: #123a2f; --bad: #fd7865; --bad-bg: #3d1a17;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101418; --fg: #eaecf0; --muted: #a2a9b1; --subtle: #8b9096;
+  --line: #54595d; --line-soft: #3a3d42; --surface: #1b1e22; --surface-2: #27292d;
+  --link: #88a3e8; --primary: #88a3e8; --primary-hover: #a6bbf5; --primary-fg: #101418;
+  --bar: #c8ccd1; --fresh: #5c4a16;
+  --ok: #4bb595; --ok-bg: #123a2f; --bad: #fd7865; --bad-bg: #3d1a17;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 16px; line-height: 1.6; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+[hidden] { display: none !important; }
+.gutter { max-width: 1040px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line-soft); }
+.top .gutter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-block: 8px; }
+.brand { display: grid; line-height: 1.15; }
+.brand-name { font-family: var(--serif); font-size: 1.35rem; }
+.brand-sub { font-size: 0.75rem; color: var(--muted); }
+.search { display: flex; flex: 1 1 300px; max-width: 520px; min-width: 0; }
+.search input { flex: 1 1 auto; min-width: 0; height: 32px; padding: 4px 8px; font: inherit; font-size: 0.875rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 2px 0 0 2px; }
+.search input::placeholder { color: var(--subtle); }
+.search input:focus { outline: none; border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.search .btn { border-radius: 0 2px 2px 0; margin-left: -1px; }
+#uncover { margin-left: auto; }
+
+.btn { height: 32px; padding: 0 12px; font: inherit; font-size: 0.875rem; font-weight: 700; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 2px; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--bg); color: var(--link); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.btn.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); color: var(--primary-fg); }
+.btn:disabled { background: var(--surface-2); border-color: var(--line-soft); color: var(--subtle); cursor: default; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+
+main.gutter { padding-block: 12px 40px; }
+h1.title { margin: 0; padding-bottom: 2px; font-family: var(--serif); font-weight: 400; font-size: 1.8rem; line-height: 1.375; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; min-height: calc(1.8rem * 1.375 + 3px); }
+.tabs { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0 16px; font-size: 0.875rem; margin-bottom: 4px; }
+.tabs > div { display: flex; gap: 14px; }
+.tab { font: inherit; background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 1px 5px; color: var(--link); cursor: pointer; }
+.tab:hover { border-bottom-color: var(--line); }
+.tab[aria-current="page"] { color: var(--fg); border-bottom-color: var(--fg); }
+.tab.armed { color: var(--bad); }
+.tagline { margin: 2px 0 10px; font-size: 0.875rem; color: var(--muted); }
+.hatnote { margin: 0 0 12px; padding-left: 1.6em; font-style: italic; font-size: 0.95rem; }
+.msg { margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface-2); font-size: 0.95rem; }
+.msg.ok { background: var(--ok-bg); border-color: var(--ok); }
+.msg.bad { background: var(--bad-bg); border-color: var(--bad); }
+
+.infobox { float: right; clear: right; width: 22em; margin: 0 0 1em 1.4em; padding: 0.2em; border: 1px solid var(--line); background: var(--surface); font-size: 0.875rem; line-height: 1.5; border-spacing: 3px; }
+.infobox caption { padding: 0.2em 0.4em 0.3em; font-family: var(--serif); font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+.infobox th, .infobox td { padding: 0.2em 0.4em; vertical-align: top; text-align: left; }
+.infobox th { width: 40%; }
+.infobox td.ib-image { padding: 0.3em 0.4em 0.5em; text-align: center; }
+.frame { overflow: hidden; line-height: 0; background: var(--surface-2); }
+.frame img { display: block; width: 100%; height: auto; transition: filter 0.6s ease, transform 0.6s ease; }
+.frame img.swap { transition: none; }
+.ib-cap { margin-top: 4px; font-size: 0.8rem; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.ib-actions { display: grid; gap: 6px; justify-items: center; padding-top: 6px !important; }
+.ib-actions .stat { color: var(--muted); }
+.cells { display: flex; gap: 2px; margin-top: 4px; }
+.cell { width: 13px; height: 8px; background: var(--bg); border: 1px solid var(--line); }
+.cell.u { background: var(--subtle); border-color: var(--subtle); }
+.cell.m { background: var(--bad); border-color: var(--bad); }
+.cell.w { background: var(--ok); border-color: var(--ok); }
+.share-fallback { width: 100%; min-height: 6em; font: inherit; font-size: 0.8rem; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 2px; padding: 6px; }
+
+.body p { margin: 0.5em 0 1em; overflow-wrap: anywhere; }
+.w { border-radius: 1px; transition: background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease; }
+.w.h { background: var(--bar); color: transparent; box-shadow: 0 0 0 1px var(--bar); user-select: none; -webkit-user-select: none; cursor: help; }
+.w.fresh { background: var(--fresh); box-shadow: 0 0 0 1px var(--fresh); }
+.body .w.kw { font-weight: 700; }
+
+.foot { clear: both; margin-top: 32px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 0.75rem; color: var(--muted); }
+.foot p { margin: 0 0 4px; }
+
+@media (max-width: 720px) {
+  .infobox { float: none; width: 100%; margin: 0 0 1em; }
+  .frame img { max-height: 190px; object-fit: cover; }
+  .brand { flex-basis: 100%; grid-auto-flow: column; justify-content: start; align-items: baseline; gap: 10px; }
+  .search { flex: 1 1 0; max-width: none; }
+  #uncover { margin-left: 0; }
+  h1.title { font-size: 1.6rem; min-height: calc(1.6rem * 1.375 + 3px); }
+}
+@media (prefers-reduced-motion: reduce) { .w, .frame img { transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="gutter">
+    <div class="brand">
+      <span class="brand-name">Wiki Blackout</span>
+      <span class="brand-sub">The daily redacted article</span>
+    </div>
+    <form class="search" id="guess-form" role="search" autocomplete="off">
+      <input id="guess" type="text" placeholder="Guess the article title" aria-label="Guess the article title" enterkeyhint="go" autocapitalize="off" spellcheck="false">
+      <button class="btn" type="submit" id="guess-btn">Guess</button>
+    </form>
+    <button class="btn primary" type="button" id="uncover">Uncover more</button>
+  </div>
+</header>
+
+<main class="gutter">
+  <h1 class="title" id="title"></h1>
+  <nav class="tabs" aria-label="Puzzle">
+    <div>
+      <button class="tab" type="button" id="tab-today" aria-current="page">Today's article</button>
+      <button class="tab" type="button" id="tab-practice">Practice</button>
+    </div>
+    <div>
+      <button class="tab" type="button" id="giveup">Give up</button>
+    </div>
+  </nav>
+  <p class="tagline" id="tagline"></p>
+  <p class="hatnote" id="hatnote" hidden></p>
+  <div class="msg" id="msg" role="status">Loading today's article…</div>
+
+  <table class="infobox" id="infobox" hidden>
+    <caption id="ib-title"></caption>
+    <tbody>
+      <tr id="ib-image-row"><td colspan="2" class="ib-image"><div class="frame"><img id="ib-img" alt="" decoding="async"></div><div class="ib-cap" id="ib-imgcap"></div></td></tr>
+      <tr><th scope="row">Step</th><td><span id="ib-step"></span><span class="cells" id="cells" aria-hidden="true"></span></td></tr>
+      <tr><th scope="row">Visible</th><td id="ib-visible"></td></tr>
+      <tr><th scope="row">Wrong guesses</th><td id="ib-misses"></td></tr>
+      <tr id="ib-result-row" hidden><th scope="row">Result</th><td id="ib-result"></td></tr>
+      <tr id="ib-share-row" hidden>
+        <td colspan="2" class="ib-actions">
+          <button class="btn" type="button" id="share">Copy result</button>
+          <textarea class="share-fallback" id="share-fallback" readonly hidden aria-label="Result to copy"></textarea>
+          <span class="stat" id="next"></span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="body" id="body"></div>
+
+  <footer class="foot">
+    <p id="credit"></p>
+    <p>Wiki Blackout is a fan-made game and isn't part of Wikipedia or the Wikimedia Foundation. A new article every day at midnight, your time. Progress is saved in this browser only.</p>
+  </footer>
+</main>
+
+<script>
+(() => {
+  const SHARE_URL = ""; // public address of the site, added to the copied result
+  const N = 10;
+  const STOP = new Set(("a an the of and or but nor in on at to for from by with as is was were are be been being it its " +
+    "this that these those which who whom whose what when where while than then there their they them he she his her him " +
+    "has have had not no also such into onto over under about after before during between among against through up down " +
+    "out off one two three first second other some more most many much can could may might will would should do does did " +
+    "so if each any all both only same very known called used including well").split(" "));
+
+  const $ = id => document.getElementById(id);
+  const fold = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const normGuess = s => fold(s).replace(/&/g, " and ").replace(/[.'’]/g, "").replace(/[^a-z0-9]+/g, " ").trim().replace(/^(the|a|an) /, "");
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  };
+  function rng(seed) {
+    let h = 1779033703 ^ seed.length;
+    for (const c of seed) { h = Math.imul(h ^ c.charCodeAt(0), 3432918353); h = (h << 13) | (h >>> 19); }
+    return () => { h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  }
+  const TOKEN = /([\p{L}\p{N}]+)|([^\p{L}\p{N}]+)/gu;
+
+  // Turn one article into spans plus a reveal order: filler words first, plain words by length, names and numbers last.
+  function build(file) {
+    const hide = file.hide.map(fold);
+    const locked = k => hide.some(h => k === h || k === h + "s" || k === h + "es" ||
+      (h.length >= 5 && k.startsWith(h.slice(0, -1)) && k.length <= h.length + 3));
+    const words = [], info = new Map();
+    const body = document.createDocumentFragment();
+    for (const para of file.paras) {
+      const p = document.createElement("p");
+      let sentenceStart = true;
+      for (const m of para.matchAll(TOKEN)) {
+        if (m[1]) {
+          const text = m[1], key = fold(text), span = document.createElement("span");
+          span.className = "w"; span.textContent = text; p.append(span);
+          words.push({ el: span, key, len: [...text].length, locked: locked(key) });
+          let i = info.get(key);
+          if (!i) info.set(key, i = { proper: false, num: /^\p{N}+$/u.test(text) });
+          if (!sentenceStart && /^\p{Lu}/u.test(text)) i.proper = true;
+          sentenceStart = false;
+        } else {
+          p.append(m[2]);
+          if (/[.!?]["'”’)\]]*\s*$/.test(m[2])) sentenceStart = true;
+        }
+      }
+      body.append(p);
+    }
+    const r = rng(file.title + "#1");
+    const tier = k => STOP.has(k) ? 0 : (info.get(k).proper || info.get(k).num) ? 2 : 1;
+    const keys = [...info.keys()].filter(k => !locked(k));
+    const score = new Map(keys.map(k => [k, tier(k) * 1000 + [...k].length + r() * 3]));
+    keys.sort((a, b) => score.get(a) - score.get(b));
+    const rank = new Map(keys.map((k, i) => [k, i]));
+
+    const titleWords = [];
+    const titleFrag = () => {
+      const f = document.createDocumentFragment();
+      for (const m of file.title.matchAll(TOKEN)) {
+        if (m[1]) { const s = document.createElement("span"); s.className = "w"; s.textContent = m[1]; f.append(s); titleWords.push({ el: s, len: [...m[1]].length }); }
+        else f.append(m[2]);
+      }
+      return f;
+    };
+    return { file, words, rank, total: keys.length, body, heading: titleFrag(), caption: titleFrag(), titleWords };
+  }
+
+  // Puzzles live in puzzles/<n>.json; puzzles/meta.json says when No. 1 was and how many files exist.
+  let meta, start, mode = "daily", shownNo = 1, puzzleNo = 1, model, state, armedGiveUp = false;
+  const loaded = new Map();
+  const getJSON = url => fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(url + " " + r.status); return r.json(); });
+  const getPuzzle = no => {
+    const n = (no - 1) % meta.count + 1; // the schedule repeats if it ever runs out
+    if (!loaded.has(n)) loaded.set(n, getJSON(`puzzles/${n}.json`).catch(e => { loaded.delete(n); throw e; }));
+    return loaded.get(n);
+  };
+  const today0 = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+  const dayIndex = () => Math.max(0, Math.round((today0() - start) / 864e5));
+  const fresh = () => ({ v: 1, actions: [], guesses: [], done: false, won: false, hiddenPct: 0 });
+  const steps = () => { const out = []; for (const a of state.actions) if ((a === "u" || a === "m") && out.length < N) out.push(a); return out; };
+  const cut = s => Math.round(model.total * s / N);
+  const save = () => { if (mode === "daily") store.set("wb-" + puzzleNo, state); };
+  const HOWTO = "This article has been blacked out. Press Uncover more to remove some of the bars, or type a guess in the box at the top. " +
+    "The words of the title stay hidden until the end. Hover over a bar to see how many letters it hides.";
+
+  function load(file, m, no) {
+    mode = m; shownNo = no; armedGiveUp = false;
+    model = build(file);
+    $("body").replaceChildren(model.body);
+    $("title").replaceChildren(model.heading);
+    $("ib-title").replaceChildren(model.caption);
+    $("infobox").hidden = false;
+    const image = file.image, img = $("ib-img");
+    $("ib-image-row").hidden = !image;
+    if (image) {
+      // Swap without a transition so the new picture never shows sharp, and keep it invisible until it arrives.
+      img.classList.add("swap");
+      img.style.visibility = "hidden";
+      img.onload = () => { img.style.visibility = ""; };
+      img.onerror = () => { $("ib-image-row").hidden = true; };
+      img.width = image.width; img.height = image.height;
+      img.src = image.src;
+      requestAnimationFrame(() => requestAnimationFrame(() => img.classList.remove("swap")));
+    }
+    const saved = m === "daily" ? store.get("wb-" + puzzleNo) : null;
+    state = saved && saved.v === 1 ? saved : fresh();
+    if (m === "daily") { $("tab-today").setAttribute("aria-current", "page"); $("tab-practice").removeAttribute("aria-current"); }
+    else { $("tab-practice").setAttribute("aria-current", "page"); $("tab-today").removeAttribute("aria-current"); }
+    $("tagline").textContent = m === "daily"
+      ? `Puzzle No. ${puzzleNo}, ${today0().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`
+      : `Practice: puzzle No. ${no} from an earlier day. It doesn't count and isn't saved.`;
+    $("guess").value = "";
+    $("share-fallback").hidden = true;
+    setMsg(null);
+    render();
+  }
+
+  function setMsg(kind, ...parts) {
+    const el = $("msg");
+    el.hidden = !kind;
+    el.className = "msg" + (kind && kind !== "note" ? " " + kind : "");
+    el.replaceChildren(...parts);
+  }
+  const bold = t => { const b = document.createElement("b"); b.textContent = t; return b; };
+  const link = (href, text) => { const a = document.createElement("a"); a.href = href; a.target = "_blank"; a.rel = "noopener"; a.textContent = text; return a; };
+  const wikiLink = () => link(model.file.url, "Read the full article on Wikipedia");
+
+  function visiblePct() {
+    const shown = model.words.filter(w => !w.el.classList.contains("h")).length;
+    return Math.round(100 * shown / model.words.length);
+  }
+
+  function render() {
+    const st = steps(), s = st.length, done = state.done;
+    const now = cut(s), before = cut(Math.max(0, s - 1));
+    for (const w of model.words) {
+      let hidden = false, isNew = false;
+      if (!done) {
+        if (w.locked) hidden = true;
+        else { const r = model.rank.get(w.key); hidden = r >= now; isNew = !hidden && s > 0 && r >= before; }
+      }
+      w.el.classList.toggle("h", hidden);
+      w.el.classList.toggle("fresh", isNew);
+      w.el.classList.toggle("kw", done && w.locked);
+      if (hidden) { w.el.setAttribute("aria-hidden", "true"); w.el.title = w.len + (w.len === 1 ? " letter" : " letters"); }
+      else { w.el.removeAttribute("aria-hidden"); w.el.removeAttribute("title"); }
+    }
+    for (const t of model.titleWords) {
+      t.el.classList.toggle("h", !done);
+      if (!done) t.el.title = t.len + (t.len === 1 ? " letter" : " letters"); else t.el.removeAttribute("title");
+    }
+    $("title").setAttribute("aria-label", done ? model.file.title : "Hidden title");
+
+    // The lead image starts as colour blobs and sharpens with each step; it only comes fully clear at the end.
+    const image = model.file.image;
+    if (image) {
+      const blur = done ? 0 : Math.round(3 + 22 * (1 - s / N));
+      const img = $("ib-img");
+      img.style.filter = blur ? `blur(${blur}px)` : "none";
+      img.style.transform = `scale(${1 + blur * 0.012})`;
+      img.alt = done ? `Main image of the article ${model.file.title}` : "";
+      const cap = $("ib-imgcap");
+      if (done) {
+        const lic = image.licenseUrl ? link(image.licenseUrl, image.license) : image.license;
+        cap.replaceChildren(`Image: ${image.artist}, `, lic, ", via ", link(image.page, "Wikimedia Commons"));
+      } else cap.textContent = "The image gets sharper as you uncover more.";
+    }
+
+    const cells = [];
+    for (let i = 0; i < N; i++) {
+      const c = document.createElement("span");
+      c.className = "cell" + (st[i] ? " " + st[i] : (state.won && i === s ? " w" : ""));
+      cells.push(c);
+    }
+    $("cells").replaceChildren(...cells);
+    $("ib-step").textContent = `${s} of ${N}`;
+    $("ib-visible").textContent = `${visiblePct()}% of words`;
+    $("ib-misses").textContent = state.guesses.length ? state.guesses.join(", ") : "None";
+
+    $("guess").disabled = done; $("guess-btn").disabled = done;
+    $("uncover").disabled = done || s >= N;
+    $("uncover").textContent = s >= N && !done ? "Fully uncovered" : "Uncover more";
+    $("giveup").hidden = done;
+    $("giveup").textContent = armedGiveUp ? "Confirm give up" : "Give up";
+    $("giveup").classList.toggle("armed", armedGiveUp);
+    $("hatnote").hidden = done;
+    $("hatnote").textContent = HOWTO;
+
+    $("ib-result-row").hidden = !done;
+    $("ib-share-row").hidden = !done || mode !== "daily";
+    $("credit").replaceChildren();
+    if (done) {
+      const misses = state.guesses.length, missText = `${misses} wrong guess${misses === 1 ? "" : "es"}`;
+      $("ib-result").textContent = state.won ? `Identified at step ${s}, ${missText}` : `Gave up at step ${s}`;
+      if (state.won) setMsg("ok", "Correct. You identified ", bold(model.file.title), ` at step ${s} of ${N}, with ${state.hiddenPct}% of the words still blacked out. `, wikiLink(), ".");
+      else setMsg("note", "The article was ", bold(model.file.title), `. You gave up at step ${s} of ${N}. `, wikiLink(), ".");
+      $("credit").append("Text shortened from the Wikipedia article ", link(model.file.url, model.file.title), ", available under ",
+        link("https://creativecommons.org/licenses/by-sa/4.0/", "CC BY-SA 4.0"), ".");
+      tick();
+    } else {
+      $("credit").textContent = "Text from Wikipedia, available under CC BY-SA 4.0. The source link and image credit appear when the puzzle is over.";
+    }
+  }
+
+  function tick() {
+    if (mode !== "daily") return;
+    const next = new Date(today0()); next.setDate(next.getDate() + 1);
+    const mins = Math.max(0, Math.round((next - new Date()) / 6e4));
+    $("next").textContent = `Next puzzle in ${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  function guess(raw) {
+    const g = normGuess(raw);
+    if (!g || state.done) return;
+    const answers = model.file.accept.concat(model.file.title).map(normGuess);
+    if (answers.some(a => g === a || g === a + "s" || g + "s" === a)) {
+      state.hiddenPct = 100 - visiblePct();
+      state.actions.push("w"); state.done = true; state.won = true;
+      save(); render();
+      return;
+    }
+    const shown = raw.trim();
+    if (state.guesses.some(x => normGuess(x) === g)) { setMsg("note", `You already guessed “${shown}”.`); return; }
+    state.guesses.push(shown);
+    state.actions.push("m");
+    $("guess").value = "";
+    save(); render();
+    setMsg("bad", `“${shown}” is not the title. ` + (steps().length >= N ? "Everything except the title words is already uncovered." : "More words are uncovered."));
+  }
+
+  function shareText() {
+    const s = steps().length;
+    const grid = state.actions.map(a => ({ u: "⬛", m: "🟥", w: "🟩", g: "🏳️" })[a]).join("");
+    const line = state.won ? `Identified at step ${s}/${N}, ${state.hiddenPct}% still blacked out` : `Gave up at step ${s}/${N}`;
+    return `Wiki Blackout #${puzzleNo}\n${line}\n${grid}` + (SHARE_URL ? `\n${SHARE_URL}` : "");
+  }
+
+  const failed = what => setMsg("bad", `Couldn't load ${what}. Check your connection and reload the page.`);
+
+  async function practice() {
+    const past = puzzleNo - 1; // practice only uses earlier days, never today's or future ones
+    if (past < 1) { setMsg("note", "Practice uses puzzles from earlier days, so it opens tomorrow."); return; }
+    let no;
+    do { no = 1 + Math.floor(Math.random() * past); } while (past > 1 && mode === "practice" && no === shownNo);
+    try { load(await getPuzzle(no), "practice", no); } catch (e) { failed("a practice article"); return; }
+    window.scrollTo({ top: 0 });
+  }
+
+  async function showToday() {
+    try { load(await getPuzzle(puzzleNo), "daily", puzzleNo); } catch (e) { failed("today's article"); }
+  }
+
+  $("guess-form").addEventListener("submit", e => { e.preventDefault(); if (!state) return; armedGiveUp = false; guess($("guess").value); });
+  $("uncover").addEventListener("click", () => {
+    if (!state || state.done || steps().length >= N) return;
+    armedGiveUp = false; state.actions.push("u");
+    save(); setMsg(null); render();
+  });
+  $("giveup").addEventListener("click", () => {
+    if (!state || state.done) return;
+    if (!armedGiveUp) { armedGiveUp = true; render(); return; }
+    armedGiveUp = false; state.actions.push("g"); state.done = true; state.won = false;
+    save(); render();
+  });
+  $("share").addEventListener("click", () => {
+    const text = shareText(), box = $("share-fallback");
+    const fallback = () => { box.value = text; box.hidden = false; box.focus(); box.select(); $("share").textContent = "Select and copy"; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => { $("share").textContent = "Copied"; setTimeout(() => $("share").textContent = "Copy result", 1800); }, fallback);
+    } else fallback();
+  });
+  $("tab-practice").addEventListener("click", () => { if (meta) practice(); });
+  $("tab-today").addEventListener("click", () => { if (meta && mode !== "daily") { showToday(); window.scrollTo({ top: 0 }); } });
+  setInterval(() => { if (state && state.done) tick(); }, 30000);
+
+  getJSON("puzzles/meta.json").then(m => {
+    meta = m;
+    const [y, mo, d] = m.start.split("-").map(Number);
+    start = new Date(y, mo - 1, d);
+    puzzleNo = dayIndex() + 1;
+    return showToday();
+  }).catch(() => failed("today's article"));
+})();
+</script>
+</body>
 </html>
